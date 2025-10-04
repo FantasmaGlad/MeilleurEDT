@@ -23,9 +23,12 @@ export default async function handler(req, res) {
   const startTime = Date.now();
   const requestId = Math.random().toString(36).substring(7);
 
-  console.log(`\n${'='.repeat(80)}`);
-  console.log(`🚀 [${requestId}] NOUVELLE REQUÊTE - ${new Date().toISOString()}`);
-  console.log(`${'='.repeat(80)}\n`);
+  // Mode développement - logs moins verbeux
+  const isDev = process.env.NODE_ENV === 'development';
+
+  if (isDev) {
+    console.log(`🚀 [${requestId}] ${req.method} ${req.url}`);
+  }
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -38,10 +41,7 @@ export default async function handler(req, res) {
   try {
     const { formation = 'CC', semaine, debug = 'false' } = req.query;
 
-    console.log(`📊 [${requestId}] PARAMÈTRES:`, { formation, semaine, debug });
-
     if (!semaine) {
-      console.log(`❌ [${requestId}] Paramètre semaine manquant\n`);
       return res.status(400).json({
         error: 'Paramètre semaine requis',
         example: '/api/planning?formation=CC&semaine=202540'
@@ -53,7 +53,7 @@ export default async function handler(req, res) {
     const cached = cache.get(cacheKey);
 
     if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-      console.log(`✅ [${requestId}] CACHE HIT (${Math.floor((Date.now() - cached.timestamp) / 1000)}s)\n`);
+      if (isDev) console.log(`✅ [${requestId}] Cache HIT (${Math.floor((Date.now() - cached.timestamp) / 1000)}s)`);
       return res.status(200).json({
         ...cached.data,
         cached: true,
@@ -61,15 +61,12 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log(`❌ [${requestId}] CACHE MISS - Fetching depuis la source...\n`);
+    if (isDev) console.log(`❌ [${requestId}] Cache MISS`);
 
     const config = FORMATION_CONFIG[formation];
     const url = `${BASE_URL}?typeRessource=${config.typeRessource}&codeRessource=${config.codeRessource}&semaine=${semaine}`;
 
-    console.log(`🌐 [${requestId}] URL COMPLÈTE:\n   ${url}\n`);
-
-    // Fetch avec headers
-    console.log(`📡 [${requestId}] ENVOI REQUÊTE HTTP...`);
+    // Fetch
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -80,57 +77,34 @@ export default async function handler(req, res) {
       }
     });
 
-    console.log(`📥 [${requestId}] RÉPONSE HTTP: ${response.status} ${response.statusText}`);
-
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      throw new Error(`HTTP ${response.status}`);
     }
 
     const html = await response.text();
-    console.log(`📄 [${requestId}] HTML REÇU: ${html.length} bytes\n`);
-
     const $ = cheerio.load(html);
 
-    // Analyse de la page
-    console.log(`🔍 [${requestId}] ANALYSE DE LA PAGE:`);
-    console.log(`   - Title: ${$('title').text()}`);
-    console.log(`   - Tables: ${$('table').length}`);
-    console.log(`   - Divs: ${$('div').length}`);
-    console.log(`   - Scripts: ${$('script').length}\n`);
-
-    // Extraire TOUS les éléments qui ressemblent à des événements
+    // Extraire les événements
     const events = [];
 
-    console.log(`🔎 [${requestId}] EXTRACTION DES ÉVÉNEMENTS:\n`);
-
-    // Chercher dans TOUTES les divs avec des attributs de style colorés
+    // Chercher dans les divs avec style background (événements colorés)
     $('div[style*="background"], td[style*="background"]').each((i, elem) => {
       const $elem = $(elem);
       const style = $elem.attr('style') || '';
       const text = $elem.text().trim();
 
-      // Ignorer les éléments trop petits ou les menus
+      // Filtres
       if (text.length < 10) return;
       if (text.includes('Sélectionnez') || text.includes('Appliquer')) return;
       if (text.includes('JURA SPORT FORMATION')) return;
 
-      // Chercher les patterns de cours
       const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-      
-      // Un événement typique a au moins 2 lignes
       if (lines.length < 2) return;
 
       const firstLine = lines[0];
-      
-      // Vérifier que la première ligne ressemble à un titre de cours
       if (firstLine.length < 3 || firstLine.length > 100) return;
 
-      console.log(`  📌 [${requestId}] Candidat ${i + 1}:`);
-      console.log(`     Texte: ${firstLine.substring(0, 50)}...`);
-      console.log(`     Lignes: ${lines.length}`);
-      console.log(`     Style: ${style.substring(0, 80)}...`);
-
-      // Déterminer le jour (vérifier les parents et position)
+      // Déterminer le jour
       let dayIndex = -1;
       let currentParent = $elem.parent();
       for (let level = 0; level < 5; level++) {
@@ -145,7 +119,7 @@ export default async function handler(req, res) {
         currentParent = currentParent.parent();
       }
 
-      // Si pas trouvé, essayer de deviner par la position
+      // Fallback sur position
       if (dayIndex === -1) {
         const cellIndex = $elem.closest('td').index();
         if (cellIndex > 0 && cellIndex <= 5) {
@@ -169,21 +143,13 @@ export default async function handler(req, res) {
         rawText: text
       };
 
-      // Validation finale
       if (event.title.length >= 3 && !event.title.includes('Planning public')) {
         events.push(event);
-        console.log(`     ✅ AJOUTÉ: ${event.title} (${event.dayName} ${event.startTime || 'N/A'})\n`);
-      } else {
-        console.log(`     ❌ IGNORÉ\n`);
       }
     });
 
-    console.log(`📊 [${requestId}] RÉSULTAT: ${events.length} événements extraits`);
-
-    // Si aucun événement, sauvegarder le HTML pour debug
-    if (events.length === 0 && debug === 'true') {
-      console.log(`⚠️ [${requestId}] AUCUN ÉVÉNEMENT - Voici un extrait du HTML:\n`);
-      console.log(html.substring(0, 2000));
+    if (isDev) {
+      console.log(`📊 [${requestId}] ${events.length} événements extraits en ${Date.now() - startTime}ms`);
     }
 
     const executionTime = Date.now() - startTime;
@@ -209,19 +175,13 @@ export default async function handler(req, res) {
 
     cache.set(cacheKey, { data, timestamp: Date.now() });
 
-    console.log(`\n✅ [${requestId}] TERMINÉ EN ${executionTime}ms`);
-    console.log(`${'='.repeat(80)}\n`);
-
     cleanCache();
 
     return res.status(200).json(data);
 
   } catch (error) {
     const executionTime = Date.now() - startTime;
-    console.error(`\n💥 [${requestId}] ERREUR FATALE:`);
-    console.error(`   Message: ${error.message}`);
-    console.error(`   Stack: ${error.stack}`);
-    console.error(`   Temps: ${executionTime}ms\n`);
+    console.error(`💥 [${requestId}] Erreur: ${error.message} (${executionTime}ms)`);
 
     return res.status(500).json({
       error: 'Erreur lors de la récupération du planning',
@@ -229,8 +189,7 @@ export default async function handler(req, res) {
       formation: req.query.formation,
       semaine: req.query.semaine,
       requestId,
-      executionTime: `${executionTime}ms`,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      executionTime: `${executionTime}ms`
     });
   }
 }
