@@ -1,25 +1,25 @@
 /**
- * Composant de switch entre les formations CC et HM
+ * Composant de switch entre les formations CC et HM - Style Google
  */
 export function FormationToggle({ formation, onChange }) {
   return (
-    <div className="inline-flex bg-gray-100 rounded-lg p-1">
+    <div className="inline-flex bg-white border border-gray-300 rounded-lg p-0.5 shadow-sm">
       <button
         onClick={() => onChange('CC')}
-        className={`px-6 py-2 rounded-md font-medium transition-all duration-300 ${
+        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-300 ${
           formation === 'CC'
-            ? 'bg-white text-blue-600 shadow-sm'
-            : 'text-gray-600 hover:text-gray-900'
+            ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md transform scale-105'
+            : 'text-gray-700 hover:bg-gray-100'
         }`}
       >
         CC
       </button>
       <button
         onClick={() => onChange('HM')}
-        className={`px-6 py-2 rounded-md font-medium transition-all duration-300 ${
+        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all duration-300 ${
           formation === 'HM'
-            ? 'bg-white text-blue-600 shadow-sm'
-            : 'text-gray-600 hover:text-gray-900'
+            ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md transform scale-105'
+            : 'text-gray-700 hover:bg-gray-100'
         }`}
       >
         HM

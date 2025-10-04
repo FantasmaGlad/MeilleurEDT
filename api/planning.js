@@ -1,33 +1,31 @@
 import * as cheerio from 'cheerio';
 
-// Cache en mémoire avec TTL de 5 minutes
 const cache = new Map();
 const CACHE_DURATION = 5 * 60 * 1000;
 
-// Configuration des formations
 const FORMATION_CONFIG = {
   CC: {
     typeRessource: '63000',
     codeRessource: '11606',
-    nom: 'BPJEPS AF CC (Cours Collectifs)'
+    nom: 'BPJEPS AF CC'
   },
   HM: {
     typeRessource: '63000',
     codeRessource: '11603',
-    nom: 'BPJEPS AF HM (Haltérophilie Musculation)'
+    nom: 'BPJEPS AF HM'
   }
 };
 
 const BASE_URL = 'https://js-formation.ymag.cloud/index.php/planning/public/';
-
-// Jours de la semaine (sans week-end)
 const WEEKDAYS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'];
 
 export default async function handler(req, res) {
   const startTime = Date.now();
   const requestId = Math.random().toString(36).substring(7);
 
-  console.log(`🚀 [${requestId}] Début de la requête`);
+  console.log(`\n${'='.repeat(80)}`);
+  console.log(`🚀 [${requestId}] NOUVELLE REQUÊTE - ${new Date().toISOString()}`);
+  console.log(`${'='.repeat(80)}\n`);
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -40,21 +38,22 @@ export default async function handler(req, res) {
   try {
     const { formation = 'CC', semaine, debug = 'false' } = req.query;
 
-    console.log(`📊 [${requestId}] Paramètres:`, { formation, semaine });
+    console.log(`📊 [${requestId}] PARAMÈTRES:`, { formation, semaine, debug });
 
     if (!semaine) {
+      console.log(`❌ [${requestId}] Paramètre semaine manquant\n`);
       return res.status(400).json({
         error: 'Paramètre semaine requis',
         example: '/api/planning?formation=CC&semaine=202540'
       });
     }
 
-    // Vérifier le cache
+    // Cache check
     const cacheKey = `${formation}-${semaine}`;
     const cached = cache.get(cacheKey);
 
     if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-      console.log(`✅ [${requestId}] Cache HIT`);
+      console.log(`✅ [${requestId}] CACHE HIT (${Math.floor((Date.now() - cached.timestamp) / 1000)}s)\n`);
       return res.status(200).json({
         ...cached.data,
         cached: true,
@@ -62,14 +61,15 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log(`❌ [${requestId}] Cache MISS`);
+    console.log(`❌ [${requestId}] CACHE MISS - Fetching depuis la source...\n`);
 
     const config = FORMATION_CONFIG[formation];
     const url = `${BASE_URL}?typeRessource=${config.typeRessource}&codeRessource=${config.codeRessource}&semaine=${semaine}`;
 
-    console.log(`🌐 [${requestId}] URL: ${url}`);
+    console.log(`🌐 [${requestId}] URL COMPLÈTE:\n   ${url}\n`);
 
-    // Fetch avec headers anti-blocage
+    // Fetch avec headers
+    console.log(`📡 [${requestId}] ENVOI REQUÊTE HTTP...`);
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -80,142 +80,122 @@ export default async function handler(req, res) {
       }
     });
 
+    console.log(`📥 [${requestId}] RÉPONSE HTTP: ${response.status} ${response.statusText}`);
+
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
     const html = await response.text();
-    console.log(`📄 [${requestId}] HTML reçu: ${html.length} bytes`);
+    console.log(`📄 [${requestId}] HTML REÇU: ${html.length} bytes\n`);
 
     const $ = cheerio.load(html);
 
-    // Extraire UNIQUEMENT les événements du planning (pas les menus de sélection)
+    // Analyse de la page
+    console.log(`🔍 [${requestId}] ANALYSE DE LA PAGE:`);
+    console.log(`   - Title: ${$('title').text()}`);
+    console.log(`   - Tables: ${$('table').length}`);
+    console.log(`   - Divs: ${$('div').length}`);
+    console.log(`   - Scripts: ${$('script').length}\n`);
+
+    // Extraire TOUS les éléments qui ressemblent à des événements
     const events = [];
 
-    // Trouver la table du planning (celle qui contient les jours de la semaine)
-    let planningTable = null;
+    console.log(`🔎 [${requestId}] EXTRACTION DES ÉVÉNEMENTS:\n`);
 
-    $('table').each((i, table) => {
-      const $table = $(table);
-      const headerText = $table.find('th, td').first().text().toLowerCase();
+    // Chercher dans TOUTES les divs avec des attributs de style colorés
+    $('div[style*="background"], td[style*="background"]').each((i, elem) => {
+      const $elem = $(elem);
+      const style = $elem.attr('style') || '';
+      const text = $elem.text().trim();
+
+      // Ignorer les éléments trop petits ou les menus
+      if (text.length < 10) return;
+      if (text.includes('Sélectionnez') || text.includes('Appliquer')) return;
+      if (text.includes('JURA SPORT FORMATION')) return;
+
+      // Chercher les patterns de cours
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
       
-      // Chercher la table qui contient les jours de la semaine
-      if (headerText.includes('lundi') || headerText.includes('semaine')) {
-        planningTable = $table;
-        console.log(`📋 [${requestId}] Table du planning trouvée (table ${i + 1})`);
-        return false; // Break
+      // Un événement typique a au moins 2 lignes
+      if (lines.length < 2) return;
+
+      const firstLine = lines[0];
+      
+      // Vérifier que la première ligne ressemble à un titre de cours
+      if (firstLine.length < 3 || firstLine.length > 100) return;
+
+      console.log(`  📌 [${requestId}] Candidat ${i + 1}:`);
+      console.log(`     Texte: ${firstLine.substring(0, 50)}...`);
+      console.log(`     Lignes: ${lines.length}`);
+      console.log(`     Style: ${style.substring(0, 80)}...`);
+
+      // Déterminer le jour (vérifier les parents et position)
+      let dayIndex = -1;
+      let currentParent = $elem.parent();
+      for (let level = 0; level < 5; level++) {
+        const parentText = currentParent.text().toLowerCase();
+        for (let d = 0; d < WEEKDAYS.length; d++) {
+          if (parentText.includes(WEEKDAYS[d])) {
+            dayIndex = d;
+            break;
+          }
+        }
+        if (dayIndex !== -1) break;
+        currentParent = currentParent.parent();
+      }
+
+      // Si pas trouvé, essayer de deviner par la position
+      if (dayIndex === -1) {
+        const cellIndex = $elem.closest('td').index();
+        if (cellIndex > 0 && cellIndex <= 5) {
+          dayIndex = cellIndex - 1;
+        }
+      }
+
+      const event = {
+        id: events.length,
+        title: firstLine,
+        description: lines.slice(1).join(' '),
+        startTime: extractTime(text, 'start'),
+        endTime: extractTime(text, 'end'),
+        day: Math.max(0, Math.min(dayIndex, 4)),
+        dayName: dayIndex >= 0 ? WEEKDAYS[dayIndex] : 'inconnu',
+        group: extractGroup(text),
+        teacher: extractTeacher(text),
+        room: extractRoom(text),
+        type: detectEventType(text),
+        color: extractColor(style),
+        rawText: text
+      };
+
+      // Validation finale
+      if (event.title.length >= 3 && !event.title.includes('Planning public')) {
+        events.push(event);
+        console.log(`     ✅ AJOUTÉ: ${event.title} (${event.dayName} ${event.startTime || 'N/A'})\n`);
+      } else {
+        console.log(`     ❌ IGNORÉ\n`);
       }
     });
 
-    if (!planningTable) {
-      console.log(`⚠️ [${requestId}] Table du planning non trouvée - fallback sur toutes les tables`);
-      planningTable = $('table').first();
+    console.log(`📊 [${requestId}] RÉSULTAT: ${events.length} événements extraits`);
+
+    // Si aucun événement, sauvegarder le HTML pour debug
+    if (events.length === 0 && debug === 'true') {
+      console.log(`⚠️ [${requestId}] AUCUN ÉVÉNEMENT - Voici un extrait du HTML:\n`);
+      console.log(html.substring(0, 2000));
     }
-
-    // Extraire les en-têtes (jours de la semaine)
-    const dayHeaders = [];
-    $(planningTable).find('tr').first().find('th, td').each((i, cell) => {
-      const text = $(cell).text().trim().toLowerCase();
-      if (WEEKDAYS.some(day => text.includes(day))) {
-        dayHeaders.push({
-          index: i,
-          day: text
-        });
-        console.log(`  📅 [${requestId}] Jour trouvé: ${text} (colonne ${i})`);
-      }
-    });
-
-    console.log(`📊 [${requestId}] ${dayHeaders.length} jours de semaine détectés`);
-
-    // Parcourir les lignes du tableau (ignorer la première ligne d'en-têtes)
-    $(planningTable).find('tr').slice(1).each((rowIndex, row) => {
-      const $row = $(row);
-      const timeCell = $row.find('td, th').first().text().trim();
-      
-      // Si la première cellule contient une heure, c'est une ligne du planning
-      if (/^\d{1,2}[h:]?\d{0,2}$/.test(timeCell)) {
-        const hourSlot = timeCell;
-
-        // Parcourir les cellules de cette ligne
-        $row.find('td').each((cellIndex, cell) => {
-          if (cellIndex === 0) return; // Ignorer la colonne horaire
-
-          const $cell = $(cell);
-          const cellText = $cell.text().trim();
-          const cellClasses = $cell.attr('class') || '';
-          const cellStyle = $cell.attr('style') || '';
-          const rowspan = parseInt($cell.attr('rowspan') || '1');
-          const colspan = parseInt($cell.attr('colspan') || '1');
-
-          // Ignorer les cellules vides
-          if (cellText.length < 5) return;
-
-          // Ignorer les cellules qui ne contiennent que des en-têtes
-          if (cellText.match(/^(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)$/i)) return;
-
-          // Ignorer les menus de sélection et autres éléments UI
-          if (cellText.includes('Sélectionnez') || cellText.includes('Appliquer')) return;
-
-          // Extraire les informations de l'événement
-          const lines = cellText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-
-          // Déterminer le jour (basé sur l'index de la cellule)
-          let dayIndex = -1;
-          for (let i = 0; i < dayHeaders.length; i++) {
-            if (cellIndex === dayHeaders[i].index || (cellIndex >= dayHeaders[i].index && cellIndex < dayHeaders[i].index + colspan)) {
-              dayIndex = i;
-              break;
-            }
-          }
-
-          // Si on ne trouve pas le jour exact, estimation
-          if (dayIndex === -1 && cellIndex > 0) {
-            dayIndex = Math.min(cellIndex - 1, 4); // Max 5 jours
-          }
-
-          const event = {
-            id: events.length,
-            title: lines[0] || 'Sans titre',
-            description: lines.slice(1).join(' '),
-            startTime: hourSlot,
-            endTime: calculateEndTime(hourSlot, rowspan),
-            day: Math.max(0, Math.min(dayIndex, 4)), // Entre 0 et 4 (lundi à vendredi)
-            dayName: WEEKDAYS[Math.max(0, Math.min(dayIndex, 4))],
-            duration: rowspan, // Nombre de créneaux horaires
-            group: extractGroup(cellText),
-            teacher: extractTeacher(cellText),
-            room: extractRoom(cellText),
-            type: detectEventType(cellText),
-            color: getColorFromStyle(cellStyle, cellClasses),
-            rawText: cellText,
-            position: { row: rowIndex, col: cellIndex, rowspan, colspan }
-          };
-
-          events.push(event);
-          console.log(`  ✅ [${requestId}] Événement: ${event.title} (${event.dayName} ${event.startTime})`);
-        });
-      }
-    });
-
-    // Filtrer et nettoyer les événements
-    const cleanEvents = events.filter(e => 
-      e.title.length > 3 && 
-      !e.title.includes('JURA SPORT') &&
-      !e.title.includes('Planning public')
-    );
-
-    console.log(`📊 [${requestId}] ${cleanEvents.length} événements extraits`);
 
     const executionTime = Date.now() - startTime;
     const data = {
       data: {
-        events: cleanEvents,
+        events,
         meta: {
           formation: config.nom,
           formationCode: formation,
           semaine,
-          totalEvents: cleanEvents.length,
-          weekdays: WEEKDAYS,
+          totalEvents: events.length,
+          weekdays: WEEKDAYS.map(d => d.charAt(0).toUpperCase() + d.slice(1)),
           executionTime: `${executionTime}ms`
         }
       },
@@ -227,13 +207,10 @@ export default async function handler(req, res) {
       executionTime: `${executionTime}ms`
     };
 
-    // Mettre en cache
-    cache.set(cacheKey, {
-      data,
-      timestamp: Date.now()
-    });
+    cache.set(cacheKey, { data, timestamp: Date.now() });
 
-    console.log(`✅ [${requestId}] Terminé en ${executionTime}ms`);
+    console.log(`\n✅ [${requestId}] TERMINÉ EN ${executionTime}ms`);
+    console.log(`${'='.repeat(80)}\n`);
 
     cleanCache();
 
@@ -241,97 +218,99 @@ export default async function handler(req, res) {
 
   } catch (error) {
     const executionTime = Date.now() - startTime;
-    console.error(`💥 [${requestId}] ERREUR:`, error.message);
+    console.error(`\n💥 [${requestId}] ERREUR FATALE:`);
+    console.error(`   Message: ${error.message}`);
+    console.error(`   Stack: ${error.stack}`);
+    console.error(`   Temps: ${executionTime}ms\n`);
 
     return res.status(500).json({
       error: 'Erreur lors de la récupération du planning',
       message: error.message,
+      formation: req.query.formation,
+      semaine: req.query.semaine,
       requestId,
-      executionTime: `${executionTime}ms`
+      executionTime: `${executionTime}ms`,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 }
 
-// Calculer l'heure de fin en fonction de la durée (rowspan)
-function calculateEndTime(startTime, rowspan) {
-  const match = startTime.match(/(\d{1,2})[h:]?(\d{0,2})/);
-  if (!match) return '';
+// Extraction de l'horaire
+function extractTime(text, type = 'start') {
+  const timePatterns = [
+    /(\d{1,2})[h:](\d{2})\s*(?:-|à)\s*(\d{1,2})[h:](\d{2})/i,
+    /(\d{1,2})[h:](\d{2})/,
+    /(\d{1,2})h/
+  ];
 
-  let hour = parseInt(match[1]);
-  const minutes = match[2] ? parseInt(match[2]) : 0;
-
-  // Ajouter la durée (1 rowspan = 1 heure généralement)
-  hour += rowspan;
-
-  return `${hour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+  for (const pattern of timePatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      if (type === 'start') {
+        return `${match[1].padStart(2, '0')}:${match[2]  ? match[2].padStart(2, '0') : '00'}`;
+      } else if (type === 'end' && match[3]) {
+        return `${match[3].padStart(2, '0')}:${match[4] ? match[4].padStart(2, '0') : '00'}`;
+      }
+    }
+  }
+  return '';
 }
 
-// Extraire le groupe de l'événement
+// Extraction du groupe
 function extractGroup(text) {
-  // Chercher des patterns comme "25 26 MOIRANS BPJEPS AF HM CE"
-  const groupMatch = text.match(/(\d{2}\s+\d{2}\s+[A-Z\s]+BPJEPS[A-Z\s]+)/);
-  return groupMatch ? groupMatch[1].trim() : '';
+  const match = text.match(/(\d{2}\s+\d{2}\s+[A-Z\s]+BPJEPS[A-Z\s]+)/i);
+  return match ? match[1].trim() : '';
 }
 
-// Extraire la salle
+// Extraction de la salle
 function extractRoom(text) {
   const lines = text.split('\n').map(l => l.trim());
   
-  // Chercher les patterns de salle
   for (const line of lines) {
-    if (line.match(/^[A-Z\s]+\d+$/)) return line; // CAP MAURIANA 2
-    if (line.toLowerCase().includes('distance')) return 'A distance';
+    if (line.match(/^(CAP|INSPE|MJC|Salle|Gymnase|Studio)/i)) return line;
+    if (line.toLowerCase().includes('distance')) return 'À distance';
     if (line.toLowerCase().includes('prescrit')) return 'Prescrit';
-    if (line.match(/^(Salle|Gymnase|Studio|SALLE|CAP|INSPE|MJC)/i)) return line;
   }
-
-  return '';
-}
-
-// Extraire le formateur
-function extractTeacher(text) {
-  const lines = text.split('\n').map(l => l.trim());
   
-  // Chercher des patterns comme "M. CARVALHO M." ou "Mme JACOTOT J."
-  for (const line of lines) {
-    if (line.match(/^(M\.|Mme|Mr|Mlle)\s+[A-Z]+/)) {
-      return line;
-    }
-  }
-
   return '';
 }
 
-// Détecter le type de cours
+// Extraction du formateur
+function extractTeacher(text) {
+  const match = text.match(/(M\.|Mme|Mr)\s+[A-Z]+\s+[A-Z]\.?/i);
+  return match ? match[0].trim() : '';
+}
+
+// Détection du type
 function detectEventType(text) {
   const lower = text.toLowerCase();
-
   if (lower.includes('communication')) return 'communication';
   if (lower.includes('concevoir') || lower.includes('projet')) return 'projet';
   if (lower.includes('caractéristiques') || lower.includes('publics')) return 'théorie';
   if (lower.includes('tp') || lower.includes('pratique')) return 'tp';
   if (lower.includes('sport') || lower.includes('gym')) return 'sport';
-
   return 'cours';
 }
 
-// Extraire la couleur du style CSS
-function getColorFromStyle(style, classes) {
-  if (style.includes('rgb(144, 238, 144)') || classes.includes('green')) return '#90EE90'; // Vert
-  if (style.includes('rgb(0, 255, 255)') || style.includes('cyan') || classes.includes('cyan')) return '#00FFFF'; // Cyan
-  if (style.includes('rgb(255, 182, 193)') || classes.includes('pink')) return '#FFB6C1'; // Rose
-  if (style.includes('rgb(255, 255, 0)') || classes.includes('yellow')) return '#FFFF00'; // Jaune
-
-  // Couleurs par défaut selon le type
-  return '#E3F2FD'; // Bleu clair par défaut
+// Extraction de la couleur du style
+function extractColor(style) {
+  if (style.includes('rgb(144, 238, 144)') || style.includes('lightgreen')) return '#90EE90';
+  if (style.includes('rgb(0, 255, 255)') || style.includes('cyan') || style.includes('aqua')) return '#00FFFF';
+  if (style.includes('rgb(255, 182, 193)') || style.includes('pink')) return '#FFB6C1';
+  if (style.includes('rgb(255, 255, 0)') || style.includes('yellow')) return '#FFFF00';
+  return '#E3F2FD';
 }
 
-// Nettoyer le cache
+// Nettoyage du cache
 function cleanCache() {
   const now = Date.now();
+  const before = cache.size;
   for (const [key, value] of cache.entries()) {
     if (now - value.timestamp > CACHE_DURATION) {
       cache.delete(key);
     }
+  }
+  if (cache.size !== before) {
+    console.log(`🧹 Cache nettoyé: ${before} → ${cache.size} entrées`);
   }
 }
