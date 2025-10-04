@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { FormationToggle } from './components/FormationToggle';
 import { WeekNavigator } from './components/WeekNavigator';
-import { PlanningGoogleStyled } from './components/PlanningGoogleStyled';
+import { PlanningCompact } from './components/PlanningCompact';
 import { LoadingState } from './components/LoadingState';
 import { ErrorState } from './components/ErrorState';
 import { ExportButton } from './components/ExportButton';
@@ -89,53 +89,43 @@ function App() {
   }, [goToNextWeek, goToPreviousWeek]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 flex flex-col">
-      {/* Header Google Style - Compact */}
-      <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50 animate-slideIn">
-        <div className="max-w-7xl mx-auto px-4 py-3 sm:px-6">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-            {/* Titre avec logo Google style */}
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold shadow-md">
-                  P
-                </div>
-                <h1 className="text-xl font-semibold text-gray-900">
-                  Planning BPJEPS
-                </h1>
+    <div className="h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 flex flex-col overflow-hidden">
+      {/* Header Ultra-Compact - Google Style */}
+      <header className="bg-white border-b border-gray-200 shadow-sm animate-slideIn flex-shrink-0">
+        <div className="max-w-7xl mx-auto px-3 py-2">
+          <div className="flex items-center justify-between gap-3">
+            {/* Titre avec logo */}
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-sm font-bold shadow">
+                P
               </div>
+              <h1 className="text-base font-semibold text-gray-900">Planning BPJEPS</h1>
               {isMockData && (
-                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">
+                <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium">
                   Test
-                </span>
-              )}
-              {isCached && !isMockData && (
-                <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full font-medium">
-                  Cache
                 </span>
               )}
             </div>
 
-            {/* Controls - Compact */}
-            <div className="flex items-center gap-3">
+            {/* Controls */}
+            <div className="flex items-center gap-2">
               <FormationToggle formation={formation} onChange={handleFormationChange} />
               <button
                 onClick={refresh}
-                className="hidden sm:flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200"
+                className="hidden sm:flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
                 aria-label="Rafraîchir"
               >
-                <RefreshCw className="w-4 h-4" />
-                <span className="hidden lg:inline">Rafraîchir</span>
+                <RefreshCw className="w-3 h-3" />
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Contenu principal - Sans scroll */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-4 sm:px-6 overflow-hidden">
-        {/* Navigation semaine - Compact */}
-        <div className="mb-4 animate-fadeIn">
+      {/* Contenu principal - FIXE sans scroll */}
+      <main className="flex-1 max-w-7xl mx-auto w-full px-3 py-2 overflow-hidden flex flex-col">
+        {/* Navigation semaine - Mini */}
+        <div className="mb-2 animate-fadeIn flex-shrink-0">
           <WeekNavigator
             weekNumber={weekNumber}
             year={year}
@@ -146,30 +136,21 @@ function App() {
           />
         </div>
 
-        {/* Planning - Hauteur flexible */}
+        {/* Planning - Prend tout l'espace restant */}
         <div
           id="planning-container"
-          className={`transition-all duration-300 ${
+          className={`flex-1 overflow-hidden transition-all duration-300 ${
             isTransitioning ? 'opacity-0 transform scale-95' : 'opacity-100 transform scale-100'
           }`}
         >
           {loading && !error ? (
-            <div className="animate-fadeIn"><LoadingState /></div>
-          ) : error && !isCached ? (
-            <div className="animate-scaleIn"><ErrorState error={error} onRetry={refresh} isCached={false} /></div>
+            <div className="h-full flex items-center justify-center"><LoadingState /></div>
+          ) : error && !isCached && !isMockData ? (
+            <div className="h-full flex items-center justify-center"><ErrorState error={error} onRetry={refresh} isCached={false} /></div>
           ) : (
-            <>
-              {error && isCached && (
-                <div className="mb-3 bg-yellow-50 border-l-4 border-yellow-400 rounded-lg p-3 animate-slideIn">
-                  <p className="text-sm text-yellow-800">
-                    ⚠️ Données en cache • Impossible de récupérer les dernières données
-                  </p>
-                </div>
-              )}
-              <div className="animate-fadeIn">
-                <PlanningGoogleStyled events={events} weekDates={weekDates} />
-              </div>
-            </>
+            <div className="h-full animate-fadeIn">
+              <PlanningCompact events={events} weekDates={weekDates} />
+            </div>
           )}
         </div>
       </main>
@@ -197,20 +178,6 @@ function App() {
         </button>
       )}
 
-      {/* Footer - Compact */}
-      <footer className="bg-white border-t border-gray-200 py-3 text-center text-xs text-gray-500 animate-fadeIn">
-        <p>
-          Planning BPJEPS AF • {new Date().getFullYear()} •{' '}
-          <a
-            href="https://js-formation.ymag.cloud"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-blue-600 hover:text-blue-700 hover:underline transition-colors"
-          >
-            JS Formation
-          </a>
-        </p>
-      </footer>
     </div>
   );
 }

@@ -39,17 +39,20 @@ export function usePlanning(formation, week) {
       // Récupérer depuis l'API
       await fetchFromAPI(formation, week, false);
     } catch (err) {
-      console.error('Erreur lors de la récupération du planning:', err);
-      
       // En développement, utiliser les données mockées si l'API échoue
       if (isDevelopment) {
-        console.warn('⚠️ Mode développement : Utilisation des données mockées');
+        // Log une seule fois de manière claire
+        if (!sessionStorage.getItem('mock-warning-shown')) {
+          console.log('📘 Mode développement : Données de test chargées (API serverless disponible uniquement en production)');
+          sessionStorage.setItem('mock-warning-shown', 'true');
+        }
         const mockData = getMockPlanningData(formation, week);
         savePlanningData(formation, week, mockData);
         setData(mockData);
         setIsCached(false);
         setError(null); // Pas d'erreur en mode dev avec mock
       } else {
+        console.error('Erreur lors de la récupération du planning:', err.message);
         setError(err.message || 'Erreur lors du chargement du planning');
         
         // Essayer de charger depuis le cache en cas d'erreur
@@ -89,6 +92,10 @@ export function usePlanning(formation, week) {
         setData(result);
       }
     } catch (err) {
+      // Ne rien logger en mode background ou développement (silencieux)
+      if (!isBackground && !isDevelopment) {
+        console.error('Erreur API:', err.message);
+      }
       if (!isBackground) {
         throw err;
       }

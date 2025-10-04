@@ -16,43 +16,43 @@ export function WeekNavigator({
   const endDate = weekDates[6];
 
   return (
-    <div className="bg-white rounded-xl shadow-md border border-gray-200 p-3 flex items-center justify-between gap-3 animate-fadeIn">
-      {/* Bouton Précédent - Style Google */}
+    <div className="bg-white rounded-xl shadow-md border border-gray-200 p-2 flex items-center justify-between gap-2">
+      {/* Bouton Précédent */}
       <button
         onClick={onPrevious}
-        className="p-2 hover:bg-blue-50 rounded-lg transition-all duration-200 touch-target hover:scale-110 active:scale-95"
+        className="p-1.5 hover:bg-blue-50 rounded-lg transition-all hover:scale-110 active:scale-95"
         aria-label="Semaine précédente"
       >
-        <ChevronLeft className="w-5 h-5 text-blue-600" />
+        <ChevronLeft className="w-4 h-4 text-blue-600" />
       </button>
 
-      {/* Informations de la semaine - Compact */}
+      {/* Infos semaine - Ultra compact */}
       <div className="flex-1 text-center">
-        <div className="font-semibold text-gray-900">
+        <div className="text-sm font-bold text-gray-900">
           Semaine {weekNumber}
         </div>
-        <div className="text-xs text-gray-500">
+        <div className="text-[10px] text-gray-500">
           {formatDate(startDate)} - {formatDate(endDate)}
         </div>
       </div>
 
-      {/* Bouton Aujourd'hui - Style Google */}
+      {/* Bouton Aujourd'hui */}
       <button
         onClick={onToday}
-        className="hidden md:flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-all duration-200 border border-blue-200 hover:border-blue-300"
+        className="hidden md:flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-blue-600 hover:bg-blue-50 rounded-lg transition-all border border-blue-200"
         aria-label="Aller à la semaine actuelle"
       >
-        <Calendar className="w-4 h-4" />
+        <Calendar className="w-3 h-3" />
         <span className="hidden lg:inline">Aujourd'hui</span>
       </button>
 
-      {/* Bouton Suivant - Style Google */}
+      {/* Bouton Suivant */}
       <button
         onClick={onNext}
-        className="p-2 hover:bg-blue-50 rounded-lg transition-all duration-200 touch-target hover:scale-110 active:scale-95"
+        className="p-1.5 hover:bg-blue-50 rounded-lg transition-all hover:scale-110 active:scale-95"
         aria-label="Semaine suivante"
       >
-        <ChevronRight className="w-5 h-5 text-blue-600" />
+        <ChevronRight className="w-4 h-4 text-blue-600" />
       </button>
     </div>
   );
