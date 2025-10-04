@@ -186,8 +186,70 @@ Créé avec ❤️ pour les étudiants BPJEPS AF
 - JS Formation pour les données source
 - La communauté React et Tailwind CSS
 
+## 🔍 Logs Détaillés pour Vercel
+
+### API avec Logs Ultra-Détaillés
+
+L'API serverless inclut maintenant des logs très détaillés visibles dans les **logs Vercel** :
+
+**Endpoint** : `/api/planning`
+
+**Paramètres** :
+- `formation` : `CC` ou `HM` (requis)
+- `semaine` : Format `AAAASS` (ex: `202540`) (requis)
+- `debug` : `true` pour logs ultra-détaillés (optionnel)
+
+**Exemples** :
+```bash
+# Requête normale
+/api/planning?formation=CC&semaine=202540
+
+# Avec logs détaillés (visible dans Vercel Logs)
+/api/planning?formation=CC&semaine=202540&debug=true
+```
+
+**Logs visibles dans Vercel Dashboard** :
+```
+🚀 [abc123] Début de la requête
+📊 [abc123] Paramètres reçus: { formation: 'CC', semaine: '202540' }
+✅ [abc123] Formation validée: BPJEPS AF CC (Cours Collectifs)
+🔍 [abc123] Recherche en cache pour clé: CC-202540
+❌ [abc123] Cache MISS - Récupération depuis la source
+🌐 [abc123] URL construite: https://js-formation.ymag.cloud/...
+📡 [abc123] Headers configurés: [12 headers différents]
+🔄 [abc123] Tentative de connexion...
+📥 [abc123] Réponse reçue: { status: 200, headers: {...} }
+📄 [abc123] HTML reçu: { length: 15234, preview: "..." }
+🔍 [abc123] HTML parsé avec Cheerio
+📊 [abc123] Structure de la page: { tables: 3, divs: 45, scripts: 2, ... }
+🔎 [abc123] Démarrage de l'extraction des événements...
+📋 [abc123] Méthode 1 - Recherche dans les tableaux...
+  📋 [abc123] Tableau 1: planning-table (8 lignes, 56 cellules)
+    🎯 [abc123] Cellule candidate trouvée: "Anatomie - M. Dupont 8h00-10h00"
+    ✅ [abc123] Événement ajouté: { id: 0, title: "Anatomie", type: "cours", ... }
+📊 [abc123] Méthode 1 terminée: 12 événements trouvés
+📊 [abc123] RÉSULTAT FINAL: { eventsFound: 12, methodsTried: 4, ... }
+✅ [abc123] Réponse préparée et mise en cache (450ms)
+```
+
+**Fonctionnalités des Logs** :
+- ✅ **ID de requête unique** pour tracer chaque requête
+- ✅ **Temps d'exécution** mesuré à chaque étape
+- ✅ **Structure HTML analysée** (tables, divs, scripts)
+- ✅ **Extraction détaillée** des événements cellule par cellule
+- ✅ **4 méthodes de scraping** avec résultats par méthode
+- ✅ **Headers utilisés** pour contourner les blocages
+- ✅ **Cache HIT/MISS** clairement indiqué
+- ✅ **Erreurs détaillées** en cas de problème
+
+**Pour voir les logs** :
+1. Déployer sur Vercel
+2. Aller dans le **Dashboard Vercel**
+3. Sélectionner votre fonction dans **Functions**
+4. Cliquer sur **Logs** pour voir les détails en temps réel
+
 ---
 
-**Version** : 1.0.0  
+**Version** : 1.0.0
 **Date** : Octobre 2025
 
