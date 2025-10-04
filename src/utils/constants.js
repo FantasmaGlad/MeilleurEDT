@@ -3,7 +3,16 @@ export const FORMATIONS = {
   HM: 'BPJEPS AF HM'
 };
 
+// Jours de la semaine (sans week-end pour le planning)
 export const DAYS = [
+  'Lundi',
+  'Mardi',
+  'Mercredi',
+  'Jeudi',
+  'Vendredi'
+];
+
+export const ALL_DAYS = [
   'Lundi',
   'Mardi',
   'Mercredi',

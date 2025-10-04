@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { FormationToggle } from './components/FormationToggle';
 import { WeekNavigator } from './components/WeekNavigator';
-import { PlanningGrid } from './components/PlanningGrid';
+import { PlanningGridGoogle } from './components/PlanningGridGoogle';
 import { LoadingState } from './components/LoadingState';
 import { ErrorState } from './components/ErrorState';
 import { ExportButton } from './components/ExportButton';
@@ -168,7 +168,7 @@ function App() {
                   </p>
                 </div>
               )}
-              <PlanningGrid events={events} weekDates={weekDates} />
+              <PlanningGridGoogle events={events} weekDates={weekDates} />
             </>
           )}
         </div>

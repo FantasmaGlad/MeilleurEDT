@@ -2,9 +2,9 @@ import * as cheerio from 'cheerio';
 
 // Cache en mémoire avec TTL de 5 minutes
 const cache = new Map();
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const CACHE_DURATION = 5 * 60 * 1000;
 
-// Configuration des formations avec les vraies URLs
+// Configuration des formations
 const FORMATION_CONFIG = {
   CC: {
     typeRessource: '63000',
@@ -20,427 +20,209 @@ const FORMATION_CONFIG = {
 
 const BASE_URL = 'https://js-formation.ymag.cloud/index.php/planning/public/';
 
+// Jours de la semaine (sans week-end)
+const WEEKDAYS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'];
+
 export default async function handler(req, res) {
   const startTime = Date.now();
   const requestId = Math.random().toString(36).substring(7);
 
   console.log(`🚀 [${requestId}] Début de la requête`);
-  console.log(`📋 [${requestId}] Méthode: ${req.method}, URL: ${req.url}`);
 
-  // Configuration CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
-    console.log(`✅ [${requestId}] OPTIONS request - CORS OK`);
     return res.status(200).end();
   }
-
-  const logs = [];
 
   try {
     const { formation = 'CC', semaine, debug = 'false' } = req.query;
 
-    console.log(`📊 [${requestId}] Paramètres reçus:`, { formation, semaine, debug });
+    console.log(`📊 [${requestId}] Paramètres:`, { formation, semaine });
 
     if (!semaine) {
-      console.log(`❌ [${requestId}] Paramètre semaine manquant`);
       return res.status(400).json({
-        error: 'Le paramètre semaine est requis',
-        example: '/api/planning?formation=CC&semaine=202540',
-        logs,
-        requestId
+        error: 'Paramètre semaine requis',
+        example: '/api/planning?formation=CC&semaine=202540'
       });
     }
-
-    // Validation de la formation
-    if (!FORMATION_CONFIG[formation]) {
-      console.log(`❌ [${requestId}] Formation inconnue: ${formation}`);
-      return res.status(400).json({
-        error: `Formation inconnue: ${formation}. Utilisez CC ou HM`,
-        formations: Object.keys(FORMATION_CONFIG),
-        logs,
-        requestId
-      });
-    }
-
-    const config = FORMATION_CONFIG[formation];
-    console.log(`✅ [${requestId}] Formation validée: ${config.nom}`);
 
     // Vérifier le cache
     const cacheKey = `${formation}-${semaine}`;
     const cached = cache.get(cacheKey);
 
-    console.log(`🔍 [${requestId}] Recherche en cache pour clé: ${cacheKey}`);
-
     if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-      const cacheAge = Math.floor((Date.now() - cached.timestamp) / 1000);
-      console.log(`✅ [${requestId}] Cache HIT - Âge: ${cacheAge}s`);
-
+      console.log(`✅ [${requestId}] Cache HIT`);
       return res.status(200).json({
         ...cached.data,
         cached: true,
-        cacheAge,
-        logs: debug === 'true' ? logs : undefined,
-        requestId,
-        executionTime: `${Date.now() - startTime}ms`
+        cacheAge: Math.floor((Date.now() - cached.timestamp) / 1000)
       });
     }
 
-    console.log(`❌ [${requestId}] Cache MISS - Récupération depuis la source`);
+    console.log(`❌ [${requestId}] Cache MISS`);
 
-    // Construire l'URL complète
+    const config = FORMATION_CONFIG[formation];
     const url = `${BASE_URL}?typeRessource=${config.typeRessource}&codeRessource=${config.codeRessource}&semaine=${semaine}`;
 
-    console.log(`🌐 [${requestId}] URL construite: ${url}`);
+    console.log(`🌐 [${requestId}] URL: ${url}`);
 
-    // Headers détaillés pour contourner les protections
-    const headers = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-      'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
-      'Accept-Encoding': 'gzip, deflate, br',
-      'DNT': '1',
-      'Connection': 'keep-alive',
-      'Upgrade-Insecure-Requests': '1',
-      'Sec-Fetch-Dest': 'document',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Site': 'same-origin',
-      'Sec-Fetch-User': '?1',
-      'Cache-Control': 'max-age=0',
-      'Referer': BASE_URL
-    };
-
-    console.log(`📡 [${requestId}] Headers configurés:`, Object.keys(headers));
-
-    // Fetch avec timeout et retry
-    console.log(`🔄 [${requestId}] Tentative de connexion...`);
-
+    // Fetch avec headers anti-blocage
     const response = await fetch(url, {
-      headers,
-      timeout: 30000, // 30 secondes timeout
-      // Note: Node.js fetch ne supporte pas nativement timeout, mais on peut l'implémenter
-    });
-
-    console.log(`📥 [${requestId}] Réponse reçue:`, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: Object.fromEntries(response.headers.entries()),
-      ok: response.ok
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'fr-FR,fr;q=0.9',
+        'Referer': BASE_URL,
+        'Connection': 'keep-alive'
+      }
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.log(`❌ [${requestId}] Erreur HTTP ${response.status}:`, errorText.substring(0, 500));
-
-      throw new Error(`HTTP ${response.status}: ${response.statusText}. Réponse: ${errorText.substring(0, 200)}...`);
+      throw new Error(`HTTP ${response.status}`);
     }
 
     const html = await response.text();
-    const htmlLength = html.length;
-
-    console.log(`📄 [${requestId}] HTML reçu:`, {
-      length: htmlLength,
-      firstChars: html.substring(0, 200),
-      lastChars: html.substring(htmlLength - 200)
-    });
-
-    // Vérification du contenu HTML
-    if (htmlLength < 1000) {
-      console.log(`⚠️ [${requestId}] HTML très court - possible erreur`);
-    }
-
-    if (!html.includes('planning') && !html.includes('Planning')) {
-      console.log(`⚠️ [${requestId}] HTML ne contient pas le mot "planning"`);
-    }
+    console.log(`📄 [${requestId}] HTML reçu: ${html.length} bytes`);
 
     const $ = cheerio.load(html);
 
-    console.log(`🔍 [${requestId}] HTML parsé avec Cheerio`);
-
-    // Analyser la structure HTML
-    const pageStructure = {
-      title: $('title').text(),
-      h1: $('h1').length,
-      tables: $('table').length,
-      divs: $('div').length,
-      scripts: $('script').length,
-      hasCalendar: $('.calendar, #calendar, [class*="calendar"]').length > 0,
-      hasPlanningTable: $('table[class*="planning"], .planning-table').length > 0,
-      bodyClasses: $('body').attr('class') || 'none',
-      forms: $('form').length,
-      selects: $('select').length,
-      inputs: $('input').length
-    };
-
-    console.log(`📊 [${requestId}] Structure de la page:`, pageStructure);
-
-    // Chercher les éléments potentiels de planning
-    const potentialElements = {
-      tables: $('table').length,
-      eventClasses: $('[class*="event"], [class*="cours"], [class*="seance"], [class*="planning"]').length,
-      timeElements: $('[class*="time"], [class*="heure"], [class*="horaire"]').length,
-      dayElements: $('[class*="day"], [class*="jour"], [data-day]').length,
-      roomElements: $('[class*="room"], [class*="salle"], [class*="gym"]').length,
-      teacherElements: $('[class*="teacher"], [class*="prof"], [class*="formateur"]').length
-    };
-
-    console.log(`🎯 [${requestId}] Éléments potentiels trouvés:`, potentialElements);
-
-    // Parser les événements du planning
+    // Extraire UNIQUEMENT les événements du planning (pas les menus de sélection)
     const events = [];
 
-    console.log(`🔎 [${requestId}] Démarrage de l'extraction des événements...`);
+    // Trouver la table du planning (celle qui contient les jours de la semaine)
+    let planningTable = null;
 
-    // Méthode 1 : Chercher dans les tableaux (approche structurée)
-    console.log(`📋 [${requestId}] Méthode 1 - Recherche dans les tableaux...`);
-
-    $('table').each((tableIndex, table) => {
+    $('table').each((i, table) => {
       const $table = $(table);
-      const tableClasses = $table.attr('class') || '';
-      const tableRows = $table.find('tr').length;
-      const tableCells = $table.find('td, th').length;
-
-      console.log(`  📋 [${requestId}] Tableau ${tableIndex + 1}: ${tableClasses} (${tableRows} lignes, ${tableCells} cellules)`);
-
-      // Chercher dans les cellules du tableau
-      $table.find('td, th').each((cellIndex, cell) => {
-        const $cell = $(cell);
-        const cellText = $cell.text().trim();
-        const cellClasses = $cell.attr('class') || '';
-        const cellStyle = $cell.attr('style') || '';
-        const colspan = parseInt($cell.attr('colspan') || '1');
-        const rowspan = parseInt($cell.attr('rowspan') || '1');
-
-        // Ignorer les cellules vides ou trop courtes
-        if (cellText.length < 3) return;
-
-        // Ignorer les en-têtes de jour
-        if (cellText.match(/^(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)$/i)) {
-          console.log(`    📅 [${requestId}] En-tête de jour ignoré: ${cellText}`);
-          return;
-        }
-
-        // Chercher les patterns d'événements
-        const hasTimePattern = /\d{1,2}[h:](\d{2})?/.test(cellText);
-        const hasEventPattern = cellClasses.includes('event') ||
-                               cellClasses.includes('cours') ||
-                               cellClasses.includes('seance') ||
-                               cellText.length > 10;
-
-        if (hasEventPattern || hasTimePattern) {
-          console.log(`    🎯 [${requestId}] Cellule candidate trouvée:`, {
-            text: cellText.substring(0, 100),
-            classes: cellClasses,
-            hasTime: hasTimePattern,
-            colspan,
-            rowspan
-          });
-
-          // Extraire les informations
-          const lines = cellText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-
-          const event = {
-            id: events.length,
-            title: lines[0] || cellText.substring(0, 50),
-            startTime: extractTime(cellText, 'start'),
-            endTime: extractTime(cellText, 'end'),
-            room: extractRoom(cellText),
-            teacher: extractTeacher(cellText),
-            type: detectEventType(cellText),
-            day: cellIndex, // À affiner selon la structure
-            rawText: cellText,
-            source: `table-${tableIndex}-cell-${cellIndex}`,
-            position: { colspan, rowspan },
-            debug: debug === 'true' ? {
-              cellClasses,
-              cellStyle,
-              lines: lines.length,
-              hasTimePattern,
-              hasEventPattern
-            } : undefined
-          };
-
-          if (event.title && event.title.length > 2) {
-            events.push(event);
-            console.log(`    ✅ [${requestId}] Événement ajouté:`, {
-              id: event.id,
-              title: event.title,
-              type: event.type,
-              startTime: event.startTime,
-              endTime: event.endTime
-            });
-          } else {
-            console.log(`    ❌ [${requestId}] Événement ignoré (titre trop court): ${event.title}`);
-          }
-        }
-      });
+      const headerText = $table.find('th, td').first().text().toLowerCase();
+      
+      // Chercher la table qui contient les jours de la semaine
+      if (headerText.includes('lundi') || headerText.includes('semaine')) {
+        planningTable = $table;
+        console.log(`📋 [${requestId}] Table du planning trouvée (table ${i + 1})`);
+        return false; // Break
+      }
     });
 
-    const method1Count = events.length;
-    console.log(`📊 [${requestId}] Méthode 1 terminée: ${method1Count} événements trouvés`);
+    if (!planningTable) {
+      console.log(`⚠️ [${requestId}] Table du planning non trouvée - fallback sur toutes les tables`);
+      planningTable = $('table').first();
+    }
 
-    // Méthode 2 : Chercher les divs avec classes spécifiques
-    if (events.length === 0) {
-      console.log(`🔎 [${requestId}] Méthode 2 - Recherche dans les divs événements...`);
-
-      $('[class*="event"], [class*="cours"], [class*="seance"], [class*="planning"]').each((i, elem) => {
-        const $elem = $(elem);
-        const text = $elem.text().trim();
-        const classes = $elem.attr('class') || '';
-        const id = $elem.attr('id') || '';
-        const dataAttrs = {};
-
-        // Récupérer tous les attributs data-*
-        Object.keys($elem[0].attribs || {}).forEach(attr => {
-          if (attr.startsWith('data-')) {
-            dataAttrs[attr] = $elem.attr(attr);
-          }
+    // Extraire les en-têtes (jours de la semaine)
+    const dayHeaders = [];
+    $(planningTable).find('tr').first().find('th, td').each((i, cell) => {
+      const text = $(cell).text().trim().toLowerCase();
+      if (WEEKDAYS.some(day => text.includes(day))) {
+        dayHeaders.push({
+          index: i,
+          day: text
         });
+        console.log(`  📅 [${requestId}] Jour trouvé: ${text} (colonne ${i})`);
+      }
+    });
 
-        if (text.length > 5 && !events.some(e => e.rawText === text)) {
+    console.log(`📊 [${requestId}] ${dayHeaders.length} jours de semaine détectés`);
+
+    // Parcourir les lignes du tableau (ignorer la première ligne d'en-têtes)
+    $(planningTable).find('tr').slice(1).each((rowIndex, row) => {
+      const $row = $(row);
+      const timeCell = $row.find('td, th').first().text().trim();
+      
+      // Si la première cellule contient une heure, c'est une ligne du planning
+      if (/^\d{1,2}[h:]?\d{0,2}$/.test(timeCell)) {
+        const hourSlot = timeCell;
+
+        // Parcourir les cellules de cette ligne
+        $row.find('td').each((cellIndex, cell) => {
+          if (cellIndex === 0) return; // Ignorer la colonne horaire
+
+          const $cell = $(cell);
+          const cellText = $cell.text().trim();
+          const cellClasses = $cell.attr('class') || '';
+          const cellStyle = $cell.attr('style') || '';
+          const rowspan = parseInt($cell.attr('rowspan') || '1');
+          const colspan = parseInt($cell.attr('colspan') || '1');
+
+          // Ignorer les cellules vides
+          if (cellText.length < 5) return;
+
+          // Ignorer les cellules qui ne contiennent que des en-têtes
+          if (cellText.match(/^(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)$/i)) return;
+
+          // Ignorer les menus de sélection et autres éléments UI
+          if (cellText.includes('Sélectionnez') || cellText.includes('Appliquer')) return;
+
+          // Extraire les informations de l'événement
+          const lines = cellText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+          // Déterminer le jour (basé sur l'index de la cellule)
+          let dayIndex = -1;
+          for (let i = 0; i < dayHeaders.length; i++) {
+            if (cellIndex === dayHeaders[i].index || (cellIndex >= dayHeaders[i].index && cellIndex < dayHeaders[i].index + colspan)) {
+              dayIndex = i;
+              break;
+            }
+          }
+
+          // Si on ne trouve pas le jour exact, estimation
+          if (dayIndex === -1 && cellIndex > 0) {
+            dayIndex = Math.min(cellIndex - 1, 4); // Max 5 jours
+          }
+
           const event = {
             id: events.length,
-            title: text.split('\n')[0] || text.substring(0, 50),
-            startTime: extractTime(text, 'start'),
-            endTime: extractTime(text, 'end'),
-            room: extractRoom(text),
-            teacher: extractTeacher(text),
-            type: detectEventType(text),
-            day: parseInt($elem.attr('data-day') || '0'),
-            rawText: text,
-            source: `div-${i}`,
-            debug: debug === 'true' ? {
-              classes,
-              id,
-              dataAttrs,
-              parentClasses: $elem.parent().attr('class') || ''
-            } : undefined
+            title: lines[0] || 'Sans titre',
+            description: lines.slice(1).join(' '),
+            startTime: hourSlot,
+            endTime: calculateEndTime(hourSlot, rowspan),
+            day: Math.max(0, Math.min(dayIndex, 4)), // Entre 0 et 4 (lundi à vendredi)
+            dayName: WEEKDAYS[Math.max(0, Math.min(dayIndex, 4))],
+            duration: rowspan, // Nombre de créneaux horaires
+            group: extractGroup(cellText),
+            teacher: extractTeacher(cellText),
+            room: extractRoom(cellText),
+            type: detectEventType(cellText),
+            color: getColorFromStyle(cellStyle, cellClasses),
+            rawText: cellText,
+            position: { row: rowIndex, col: cellIndex, rowspan, colspan }
           };
 
           events.push(event);
-          console.log(`  ✅ [${requestId}] Événement div trouvé:`, {
-            id: event.id,
-            title: event.title,
-            type: event.type,
-            classes
-          });
-        }
-      });
-
-      console.log(`📊 [${requestId}] Méthode 2 terminée: ${events.length - method1Count} événements trouvés`);
-    }
-
-    // Méthode 3 : Extraction depuis les scripts JavaScript
-    if (events.length === 0) {
-      console.log(`🔎 [${requestId}] Méthode 3 - Recherche dans les scripts JavaScript...`);
-
-      $('script').each((i, script) => {
-        const scriptContent = $(script).html() || '';
-        const scriptSrc = $(script).attr('src') || '';
-
-        if (scriptContent && (scriptContent.includes('planning') || scriptContent.includes('events'))) {
-          console.log(`  📜 [${requestId}] Script ${i + 1} trouvé:`, {
-            length: scriptContent.length,
-            src: scriptSrc,
-            preview: scriptContent.substring(0, 200)
-          });
-
-          // Essayer d'extraire des objets JSON
-          try {
-            // Chercher des patterns JSON simples
-            const jsonMatches = scriptContent.match(/\{[^{}]*"[^"]*"[^{}]*\}/g);
-            if (jsonMatches) {
-              console.log(`  📦 [${requestId}] ${jsonMatches.length} objets JSON potentiels trouvés`);
-            }
-          } catch (e) {
-            console.log(`  ⚠️ [${requestId}] Erreur parsing script ${i + 1}:`, e.message);
-          }
-        }
-      });
-    }
-
-    // Méthode 4 : Extraction générale du contenu textuel
-    if (events.length === 0) {
-      console.log(`🔎 [${requestId}] Méthode 4 - Extraction générale du contenu...`);
-
-      const bodyText = $('body').text();
-      const lines = bodyText.split('\n').map(l => l.trim()).filter(l => l.length > 10);
-
-      console.log(`📝 [${requestId}] Contenu du body:`, {
-        totalLength: bodyText.length,
-        linesCount: lines.length,
-        sample: lines.slice(0, 5)
-      });
-
-      // Chercher des patterns d'événements dans le texte
-      lines.forEach((line, index) => {
-        if (line.length > 15 && /\d/.test(line) && !line.includes('Planning') && !line.includes('JURA SPORT')) {
-          const event = {
-            id: events.length,
-            title: line.substring(0, 50),
-            startTime: extractTime(line, 'start'),
-            endTime: extractTime(line, 'end'),
-            room: extractRoom(line),
-            teacher: extractTeacher(line),
-            type: detectEventType(line),
-            day: Math.floor(index / 3), // Estimation
-            rawText: line,
-            source: `body-line-${index}`
-          };
-
-          if (event.title.length > 5) {
-            events.push(event);
-            console.log(`  ✅ [${requestId}] Événement texte trouvé:`, {
-              id: event.id,
-              title: event.title,
-              type: event.type
-            });
-          }
-        }
-      });
-    }
-
-    // Nettoyer les événements dupliqués
-    const uniqueEvents = events.filter((event, index, self) =>
-      index === self.findIndex((e) => e.rawText === event.rawText && e.title === event.title)
-    );
-
-    const duplicatesRemoved = events.length - uniqueEvents.length;
-    if (duplicatesRemoved > 0) {
-      console.log(`🧹 [${requestId}] ${duplicatesRemoved} doublons supprimés`);
-    }
-
-    console.log(`📊 [${requestId}] RÉSULTAT FINAL:`, {
-      eventsFound: uniqueEvents.length,
-      methodsTried: events.length > 0 ? 4 : 'Toutes épuisées',
-      sampleEvents: uniqueEvents.slice(0, 3).map(e => ({
-        title: e.title,
-        type: e.type,
-        startTime: e.startTime,
-        source: e.source
-      }))
+          console.log(`  ✅ [${requestId}] Événement: ${event.title} (${event.dayName} ${event.startTime})`);
+        });
+      }
     });
 
-    // Préparer la réponse
+    // Filtrer et nettoyer les événements
+    const cleanEvents = events.filter(e => 
+      e.title.length > 3 && 
+      !e.title.includes('JURA SPORT') &&
+      !e.title.includes('Planning public')
+    );
+
+    console.log(`📊 [${requestId}] ${cleanEvents.length} événements extraits`);
+
     const executionTime = Date.now() - startTime;
     const data = {
       data: {
-        events: uniqueEvents,
+        events: cleanEvents,
         meta: {
-          formation,
+          formation: config.nom,
+          formationCode: formation,
           semaine,
-          totalEvents: uniqueEvents.length,
-          executionTime: `${executionTime}ms`,
-          source: 'js-formation.ymag.cloud'
+          totalEvents: cleanEvents.length,
+          weekdays: WEEKDAYS,
+          executionTime: `${executionTime}ms`
         }
       },
       cached: false,
       formation,
       semaine,
       timestamp: new Date().toISOString(),
-      logs: debug === 'true' ? logs : undefined,
       requestId,
       executionTime: `${executionTime}ms`
     };
@@ -451,134 +233,105 @@ export default async function handler(req, res) {
       timestamp: Date.now()
     });
 
-    console.log(`✅ [${requestId}] Réponse préparée et mise en cache (${executionTime}ms)`);
+    console.log(`✅ [${requestId}] Terminé en ${executionTime}ms`);
 
-    // Nettoyer le cache des entrées expirées
     cleanCache();
 
     return res.status(200).json(data);
 
   } catch (error) {
     const executionTime = Date.now() - startTime;
-    console.error(`💥 [${requestId}] ERREUR FATALE (${executionTime}ms):`, {
-      message: error.message,
-      stack: error.stack,
-      name: error.name
-    });
+    console.error(`💥 [${requestId}] ERREUR:`, error.message);
 
     return res.status(500).json({
       error: 'Erreur lors de la récupération du planning',
       message: error.message,
-      formation: req.query.formation,
-      semaine: req.query.semaine,
       requestId,
-      logs,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
       executionTime: `${executionTime}ms`
     });
   }
 }
 
-// Extraire l'horaire du texte
-function extractTime(text, type = 'start') {
-  // Patterns multiples pour détecter les horaires
-  const timePatterns = [
-    /(\d{1,2})[h:](\d{2})/,  // 8h00, 08:30, 8:45
-    /(\d{1,2})[h:](\d{2})\s*-\s*(\d{1,2})[h:](\d{2})/, // 8h00 - 10h00
-    /(\d{1,2}):(\d{2})/,     // 08:30, 9:15
-    /(\d{1,2})\s*-\s*(\d{1,2})/  // 8 - 10
-  ];
+// Calculer l'heure de fin en fonction de la durée (rowspan)
+function calculateEndTime(startTime, rowspan) {
+  const match = startTime.match(/(\d{1,2})[h:]?(\d{0,2})/);
+  if (!match) return '';
 
-  for (const pattern of timePatterns) {
-    const matches = text.match(pattern);
-    if (matches) {
-      if (type === 'start' && matches.length >= 3) {
-        return `${matches[1].padStart(2, '0')}:${matches[2].padStart(2, '0')}`;
-      } else if (type === 'end' && matches.length >= 5) {
-        return `${matches[3].padStart(2, '0')}:${matches[4].padStart(2, '0')}`;
-      }
-    }
-  }
+  let hour = parseInt(match[1]);
+  const minutes = match[2] ? parseInt(match[2]) : 0;
 
-  return '';
+  // Ajouter la durée (1 rowspan = 1 heure généralement)
+  hour += rowspan;
+
+  return `${hour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
 }
 
-// Extraire la salle du texte
+// Extraire le groupe de l'événement
+function extractGroup(text) {
+  // Chercher des patterns comme "25 26 MOIRANS BPJEPS AF HM CE"
+  const groupMatch = text.match(/(\d{2}\s+\d{2}\s+[A-Z\s]+BPJEPS[A-Z\s]+)/);
+  return groupMatch ? groupMatch[1].trim() : '';
+}
+
+// Extraire la salle
 function extractRoom(text) {
-  const roomPatterns = [
-    /(?:salle|Salle|gym|gymnase|Gymnase)\s*:?\s*([A-Za-z0-9\s]+)/i,
-    /(?:studio|Studio)\s*([A-Za-z0-9\s]+)/i,
-    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s*(?:-\s*)?([A-Z]\d+|[A-Z]\s*\d*)/, // Salle A1, Gymnase Principal
-    /([A-Z]\d+|[A-Z]\s*\d*)/  // A1, B2, etc.
-  ];
-
-  for (const pattern of roomPatterns) {
-    const match = text.match(pattern);
-    if (match && match[1] && match[1].length > 1) {
-      return match[1].trim();
-    }
+  const lines = text.split('\n').map(l => l.trim());
+  
+  // Chercher les patterns de salle
+  for (const line of lines) {
+    if (line.match(/^[A-Z\s]+\d+$/)) return line; // CAP MAURIANA 2
+    if (line.toLowerCase().includes('distance')) return 'A distance';
+    if (line.toLowerCase().includes('prescrit')) return 'Prescrit';
+    if (line.match(/^(Salle|Gymnase|Studio|SALLE|CAP|INSPE|MJC)/i)) return line;
   }
 
   return '';
 }
 
-// Extraire le formateur du texte
+// Extraire le formateur
 function extractTeacher(text) {
-  const teacherPatterns = [
-    /(?:formateur|Formateur|intervenant|Intervenant|prof|Prof)\s*:?\s*([A-Z][a-z]+\s+[A-Z][a-z]+)/,
-    /(?:M\.|Mme|Mr|Mlle)\s+([A-Z][a-z]+)/,
-    /([A-Z][a-z]+)\s+([A-Z][a-z]+)/  // Prénom Nom
-  ];
-
-  for (const pattern of teacherPatterns) {
-    const match = text.match(pattern);
-    if (match) {
-      // Prendre le dernier groupe de capture (le nom du prof)
-      const lastGroup = match[match.length - 1];
-      if (lastGroup && lastGroup.length > 2) {
-        return lastGroup.trim();
-      }
+  const lines = text.split('\n').map(l => l.trim());
+  
+  // Chercher des patterns comme "M. CARVALHO M." ou "Mme JACOTOT J."
+  for (const line of lines) {
+    if (line.match(/^(M\.|Mme|Mr|Mlle)\s+[A-Z]+/)) {
+      return line;
     }
   }
 
   return '';
 }
 
-// Détecter le type de cours selon le contenu
+// Détecter le type de cours
 function detectEventType(text) {
-  const lowerText = text.toLowerCase();
+  const lower = text.toLowerCase();
 
-  // Mots-clés pour chaque type
-  const typeKeywords = {
-    sport: ['sport', 'gym', 'fitness', 'musculation', 'cardio', 'renforcement', 'haltéro', 'crossfit'],
-    tp: ['tp', 'pratique', 'atelier', 'pratiquer', 'technique', 'application'],
-    td: ['td', 'dirigé', 'dirigés', 'théorie', 'cours magistral', 'cm'],
-    cours: ['cours', 'leçon', 'séance', 'session', 'formation']
-  };
+  if (lower.includes('communication')) return 'communication';
+  if (lower.includes('concevoir') || lower.includes('projet')) return 'projet';
+  if (lower.includes('caractéristiques') || lower.includes('publics')) return 'théorie';
+  if (lower.includes('tp') || lower.includes('pratique')) return 'tp';
+  if (lower.includes('sport') || lower.includes('gym')) return 'sport';
 
-  for (const [type, keywords] of Object.entries(typeKeywords)) {
-    if (keywords.some(keyword => lowerText.includes(keyword))) {
-      return type;
-    }
-  }
-
-  return 'cours'; // Par défaut
+  return 'cours';
 }
 
-// Nettoyer le cache des entrées expirées
+// Extraire la couleur du style CSS
+function getColorFromStyle(style, classes) {
+  if (style.includes('rgb(144, 238, 144)') || classes.includes('green')) return '#90EE90'; // Vert
+  if (style.includes('rgb(0, 255, 255)') || style.includes('cyan') || classes.includes('cyan')) return '#00FFFF'; // Cyan
+  if (style.includes('rgb(255, 182, 193)') || classes.includes('pink')) return '#FFB6C1'; // Rose
+  if (style.includes('rgb(255, 255, 0)') || classes.includes('yellow')) return '#FFFF00'; // Jaune
+
+  // Couleurs par défaut selon le type
+  return '#E3F2FD'; // Bleu clair par défaut
+}
+
+// Nettoyer le cache
 function cleanCache() {
   const now = Date.now();
-  const initialSize = cache.size;
-
   for (const [key, value] of cache.entries()) {
     if (now - value.timestamp > CACHE_DURATION) {
       cache.delete(key);
     }
   }
-
-  const finalSize = cache.size;
-  if (initialSize !== finalSize) {
-    console.log(`🧹 Cache nettoyé: ${initialSize} → ${finalSize} entrées`);
-  }
 }
-
